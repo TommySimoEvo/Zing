@@ -101,3 +101,13 @@ figure.plantuml.failed pre { border-color: var(--missing); text-align: left; }
   #toolbar, #toc { display: none !important; }
   body.with-toc .markdown-body { margin-right: auto; }
 }
+
+/* segnaposto mentre i diagrammi vengono resi */
+.mermaid:not([data-processed="true"]) { color: transparent; position: relative; min-height: 2.5em; overflow: hidden; max-height: 4em; }
+.mermaid:not([data-processed="true"])::after,
+figure.plantuml.loading::before {
+  content: "Rendering del diagramma\2026"; color: var(--muted); font-size: 13px;
+}
+.mermaid:not([data-processed="true"])::after { position: absolute; left: 0; right: 0; top: .8em; }
+figure.plantuml.loading { min-height: 3em; }
+figure.plantuml.loading img { opacity: 0; }

@@ -1,12 +1,12 @@
-namespace Zing;
+﻿namespace Zing;
 
 /// <summary>
-/// Mappa i percorsi locali su URL del finto host https://zing.local/f/...,
-/// così i link relativi tra file (../altro.md, img/x.png) si risolvono da soli.
+/// Mappa i percorsi locali su URL del finto host https://zing.invalid/f/...,
+/// cosÃ¬ i link relativi tra file (../altro.md, img/x.png) si risolvono da soli.
 /// </summary>
 internal static class LocalUrl
 {
-    public const string Origin = "https://zing.local";
+    public const string Origin = "https://zing.invalid";
     public const string FilePrefix = Origin + "/f/";
     public const string AppPrefix = Origin + "/__app/";
 
@@ -18,7 +18,7 @@ internal static class LocalUrl
         return FilePrefix + string.Join("/", p.Split('/').Select(Uri.EscapeDataString));
     }
 
-    /// <summary>Restituisce il percorso locale se l'URL è un /f/..., altrimenti null.</summary>
+    /// <summary>Restituisce il percorso locale se l'URL Ã¨ un /f/..., altrimenti null.</summary>
     public static string? ToPath(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return null;

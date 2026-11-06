@@ -94,10 +94,12 @@
     const pre = code.closest('pre');
     const holder = pre.closest('figure.plantuml') || pre;
     const fig = document.createElement('figure');
-    fig.className = 'plantuml';
+    fig.className = 'plantuml loading';
     const img = document.createElement('img');
+    img.addEventListener('load', () => fig.classList.remove('loading'));
     img.alt = 'Diagramma PlantUML';
     img.addEventListener('error', () => {
+      fig.classList.remove('loading');
       fig.classList.add('failed');
       fig.title = 'Rendering PlantUML non riuscito (server plantuml.com non raggiungibile?)';
       fig.replaceChildren(pre.cloneNode(true));
@@ -184,12 +186,14 @@
 
   // ---------- avvio ----------
   let ready = false;
+  const t0 = performance.now();
+  let readyAt = 0;
   postTheme();
   buildToc();
   collectMermaid();
   Promise.all([renderMermaid(), renderPlantUml()])
     .then(() => Promise.all(pending))
-    .finally(() => { if (!restoreScroll()) scrollToHash(); ready = true; });
+    .finally(() => { if (!restoreScroll()) scrollToHash(); ready = true; readyAt = performance.now(); });
 
   window.__mdvReport = () => ({
     ready,
@@ -210,5 +214,6 @@
     frontMatter: !!content.querySelector('.front-matter'),
     firstHeading: (content.querySelector('h1') || {}).textContent || null,
     errors,
+    perf: { domInteractive: Math.round(performance.timing.domInteractive - performance.timing.navigationStart), scriptStart: Math.round(t0), ready: Math.round(readyAt) },
   });
 })();

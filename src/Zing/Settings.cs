@@ -11,6 +11,9 @@ internal sealed class Settings
     public int WindowHeight { get; set; } = 850;
     public bool Maximized { get; set; }
 
+    /// <summary>Ultimo tema effettivo della pagina: la finestra si apre già nel colore giusto (null = segue Windows).</summary>
+    public bool? Dark { get; set; }
+
     /// <summary>"ask" (predefinito): i diagrammi PlantUML si inviano a plantuml.com solo su richiesta; "always": sempre.</summary>
     public string PlantUml { get; set; } = "ask";
 
