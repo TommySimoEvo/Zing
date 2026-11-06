@@ -5,6 +5,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        Timing.Mark("main");
         ApplicationConfiguration.Initialize();
 
         // "--" separa le opzioni dal percorso: tutto ciò che segue è un file (usato quando Zing si rilancia da un link).

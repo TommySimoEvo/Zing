@@ -23,6 +23,7 @@ Visualizzatore leggero di file Markdown per Windows, scritto in .NET 10 WinForms
   - mostra cartelle e file Markdown e carica una cartella solo quando la apri;
   - la radice è il progetto del file aperto e si cambia con `…` o dal menu del tasto destro;
   - si aggiorna da solo quando i file cambiano.
+- **Indicatori di caricamento**: all'avvio, mentre WebView2 parte (circa 0,6 s), la finestra mostra "Apertura di …" già nel tema giusto. Le navigazioni che superano i 200 ms mostrano una barra sottile in alto, e i diagrammi un segnaposto finché non sono resi.
 - **Indice dei titoli** a destra (tasto `T`), tema automatico/chiaro/scuro (tasto `D`) e ricarica automatica quando il file cambia, mantenendo la posizione di scorrimento.
 - **Scorciatoie**: `Ctrl+O` apre un file, `Ctrl+F` cerca, `Alt+←` torna indietro, `Ctrl+rotella` regola lo zoom, `Ctrl+P` stampa.
 - **Cartelle di rete**: Zing legge solo dalla condivisione (`\\server\share`) del file aperto dall'utente, non da altre.
@@ -50,7 +51,7 @@ Zing.exe --selftest "samples\security\ancore.md#Perché funziona" $env:TEMP\zt-a
 ```
 
 Il comando produce tre file:
-- `zt.json`: report con titolo, numero di blocchi Mermaid resi, PlantUML in attesa o caricati, wikilink risolti e mancanti, posizione di scorrimento, errori JS e stato dell'albero;
+- `zt.json`: report con i tempi di avvio (`tree.timing`, in ms dall'avvio del processo; `page.perf`, in ms dall'inizio della navigazione), titolo, numero di blocchi Mermaid resi, PlantUML in attesa o caricati, wikilink risolti e mancanti, posizione di scorrimento, errori JS e stato dell'albero;
 - `zt.png`: screenshot della pagina;
 - `zt-window.png`: screenshot della finestra intera, oppure `zt-screenshot-error.txt` se lo schermo non è catturabile.
 
@@ -64,7 +65,7 @@ Con la variabile `ZING_PLANTUML=always`, valida solo in self-test, i diagrammi P
 ## Decisioni
 
 1. **WinForms + WebView2**, con il runtime .NET incluso nell'MSI (scelta di Tommaso, 06/11/2026): niente prerequisiti in cambio di un MSI da 40 MB invece di 1,5 MB.
-2. **Finto host `https://zing.local/f/<percorso>`.** I file sono serviti da `WebResourceRequested`, con lettura e rendering in background. Così i link relativi e il tasto indietro funzionano senza codice aggiuntivo.
+2. **Finto host `https://zing.invalid/f/<percorso>`.** I file sono serviti da `WebResourceRequested`, con lettura e rendering in background. Così i link relativi e il tasto indietro funzionano senza codice aggiuntivo. Il dominio `.invalid` è riservato e fallisce subito. Con `.local`, usato fino alla 0.3.0, Chromium tentava una risoluzione mDNS e ogni pagina si apriva con circa 2 s di ritardo (misura del 06/11/2026).
 3. **Il .md non è fidato.**
    - Una CSP con nonce impedisce che gli script presenti nel .md vengano eseguiti.
    - Le immagini sono limitate a file locali e PlantUML.

@@ -19,6 +19,14 @@ internal sealed class MainForm : Form
     private string? _trustedNetworkRoot;
     private bool _dark;
 
+    // indicatori di caricamento: pannello all'avvio (WebView2 impiega ~0,6 s a partire) e barra sottile
+    // in alto per le navigazioni che durano più di 200 ms
+    private readonly Panel _startupOverlay = new() { Dock = DockStyle.Fill };
+    private readonly Label _startupLabel = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter };
+    private readonly ProgressBar _startupBar = new() { Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 25, Height = 4, Dock = DockStyle.Bottom };
+    private readonly ProgressBar _navBar = new() { Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 25, Height = 3, Dock = DockStyle.Top, Visible = false };
+    private readonly System.Windows.Forms.Timer _navDelay = new() { Interval = 200 };
+
     public MainForm(string file, string? selfTestOutput = null)
     {
         _initialFile = file;
@@ -33,7 +41,18 @@ internal sealed class MainForm : Form
 
         _split.Panel1.Controls.Add(_folderTree);
         _split.Panel2.Controls.Add(_web);
+        _split.Panel2.Controls.Add(_navBar);
+        _startupLabel.Text = $"Apertura di {Path.GetFileName(file)}…";
+        _startupLabel.Font = new Font(Font.FontFamily, 11f);
+        var barHolder = new Panel { Dock = DockStyle.Bottom, Height = 4 };
+        barHolder.Controls.Add(_startupBar);
+        _startupOverlay.Controls.Add(_startupLabel);
+        _startupOverlay.Controls.Add(barHolder);
+        _split.Panel2.Controls.Add(_startupOverlay);
+        _startupOverlay.BringToFront();
+        _navDelay.Tick += (_, _) => { _navDelay.Stop(); _navBar.Visible = true; _navBar.BringToFront(); };
         Controls.Add(_split);
+        ApplyTheme(_settings.Dark ?? SystemUsesDarkTheme());
         _folderTree.FileActivated += path =>
         {
             if (!string.Equals(path, _currentFile, StringComparison.OrdinalIgnoreCase)) Navigate(path);
@@ -42,6 +61,7 @@ internal sealed class MainForm : Form
         _reloadTimer.Tick += (_, _) => { _reloadTimer.Stop(); _ = ReloadPreservingScrollAsync(); };
         Load += async (_, _) =>
         {
+            Timing.Mark("form-load");
             _split.Panel1MinSize = LogicalToDeviceUnits(150);
             _split.SplitterDistance = Math.Clamp(_settings.TreeWidth, _split.Panel1MinSize, Math.Max(_split.Panel1MinSize, Width / 2));
             _split.Panel1Collapsed = !_settings.TreeVisible;
@@ -93,8 +113,40 @@ internal sealed class MainForm : Form
         _dark = dark;
         _folderTree.ApplyTheme(dark);
         _split.BackColor = dark ? Color.FromArgb(0x3d, 0x44, 0x4d) : Color.FromArgb(0xd1, 0xd9, 0xe0);
-        int value = dark ? 1 : 0;
+        Color pageBack = dark ? Color.FromArgb(0x0d, 0x11, 0x17) : Color.White;
+        _web.DefaultBackgroundColor = pageBack;   // niente lampo bianco tra una pagina e l'altra
+        _startupOverlay.BackColor = pageBack;
+        _startupLabel.ForeColor = dark ? Color.FromArgb(0x91, 0x98, 0xa1) : Color.FromArgb(0x59, 0x63, 0x6e);
+        ApplyTitleBarTheme();
+    }
+
+    private void ApplyTitleBarTheme()
+    {
+        int value = _dark ? 1 : 0;
         if (IsHandleCreated) DwmSetWindowAttribute(Handle, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, ref value, sizeof(int));
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ApplyTitleBarTheme();
+    }
+
+    private static bool SystemUsesDarkTheme()
+    {
+        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+        return key?.GetValue("AppsUseLightTheme") is int light && light == 0;
+    }
+
+    /// <summary>Il tema della pagina è cambiato: aggiorna finestra e albero e lo ricorda per il prossimo avvio.</summary>
+    private void OnPageTheme(bool dark)
+    {
+        if (dark != _dark) ApplyTheme(dark);
+        if (_selfTestOutput is null && _settings.Dark != dark)
+        {
+            _settings.Dark = dark;
+            Settings.Update(s => s.Dark = dark);
+        }
     }
 
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
@@ -113,7 +165,9 @@ internal sealed class MainForm : Form
         try
         {
             var env = await CoreWebView2Environment.CreateAsync(userDataFolder: dataDir);
+            Timing.Mark("webview-env");
             await _web.EnsureCoreWebView2Async(env);
+            Timing.Mark("webview-ready");
         }
         catch (Exception ex)
         {
@@ -130,6 +184,7 @@ internal sealed class MainForm : Form
         core.AddWebResourceRequestedFilter(LocalUrl.Origin + "/*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += OnWebResourceRequested;
         core.NavigationStarting += OnNavigationStarting;
+        core.NavigationStarting += (_, e) => { if (!e.Cancel) { _navDelay.Stop(); _navDelay.Start(); } };
         core.NewWindowRequested += OnNewWindowRequested;
         core.NavigationCompleted += OnNavigationCompleted;
         core.DocumentTitleChanged += (_, _) => Text = core.DocumentTitle + " - Zing";
@@ -165,8 +220,8 @@ internal sealed class MainForm : Form
         {
             case "open": ShowOpenDialog(); break;
             case "toggle-tree": ToggleTree(); break;
-            case "theme:dark": if (!_dark) ApplyTheme(true); break;
-            case "theme:light": if (_dark) ApplyTheme(false); break;
+            case "theme:dark": OnPageTheme(true); break;
+            case "theme:light": OnPageTheme(false); break;
             case "plantuml:always":
                 _settings.PlantUml = "always";
                 if (_selfTestOutput is null) Settings.Update(s => s.PlantUml = "always");
@@ -174,7 +229,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    // ---------- risorse servite dal finto host https://zing.local ----------
+    // ---------- risorse servite dal finto host https://zing.invalid ----------
 
     private const long MaxServedFileBytes = 50L * 1024 * 1024;
 
@@ -193,7 +248,9 @@ internal sealed class MainForm : Form
             string url = e.Request.Uri;
             string? trustedRoot = _trustedNetworkRoot;
             string plantUml = PlantUmlMode;
+            var sw = Stopwatch.StartNew();
             var r = await Task.Run(() => BuildResource(url, trustedRoot, plantUml));
+            if (url.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) { Timing.Mark("md-served"); Timing.Mark($"md-build-ms={sw.ElapsedMilliseconds}"); }
             // la finestra può essere stata chiusa mentre si leggeva il file
             if (!IsDisposed && _web.CoreWebView2 is not null)
                 e.Response = env.CreateWebResourceResponse(r.Content, r.Status, r.Reason, r.Headers);
@@ -369,9 +426,15 @@ internal sealed class MainForm : Form
         {
             _currentFile = path;
             WatchFile(path);
+            var swTree = Stopwatch.StartNew();
             _folderTree.Reveal(path);
+            Timing.Mark($"tree-reveal-ms={swTree.ElapsedMilliseconds}");
         }
 
+        Timing.Mark("nav-completed");
+        _navDelay.Stop();
+        _navBar.Visible = false;
+        if (_startupOverlay.Visible) { _startupOverlay.Visible = false; _startupBar.MarqueeAnimationSpeed = 0; }
         if (_selfTestOutput is not null) await RunSelfTestAsync();
     }
 
@@ -418,7 +481,8 @@ internal sealed class MainForm : Form
         }
         string page = report == "null" ? "{\"error\":\"viewer.js non caricato\"}" : JsonDocument.Parse(report).RootElement.GetString()!;
         await Task.Delay(300); // lascia applicare il tema all'albero prima dello screenshot
-        string tree = JsonSerializer.Serialize(_folderTree.Describe());
+        Timing.Mark("page-ready");
+        string tree = JsonSerializer.Serialize(new { info = _folderTree.Describe(), timing = Timing.Snapshot() });
         await File.WriteAllTextAsync(prefix + ".json", $"{{\"page\":{page},\"tree\":{tree},\"dark\":{(_dark ? "true" : "false")}}}");
         try
         {
@@ -445,7 +509,7 @@ internal sealed class MainForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _watcher?.Dispose(); _reloadTimer.Dispose(); }
+        if (disposing) { _watcher?.Dispose(); _reloadTimer.Dispose(); _navDelay.Dispose(); }
         base.Dispose(disposing);
     }
 }
