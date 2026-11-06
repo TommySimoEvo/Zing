@@ -1,76 +1,138 @@
 # Zing
 
-Visualizzatore leggero di file Markdown per Windows, scritto in .NET 10 WinForms con WebView2 e Markdig. Si installa per singolo utente con un MSI di circa 40 MB, che include il runtime .NET.
+A lightweight, fast Markdown viewer for Windows. Double-click a `.md` file and read it rendered — GitHub-style formatting, Mermaid diagrams, `[[wikilinks]]`, a folder tree and a table of contents — without opening an editor or a browser.
 
-## Funzioni
+Zing is a viewer, not an editor: it reloads automatically when the file changes, so it works well next to your editor of choice.
 
-- **Markdown in stile GitHub**: tabelle, task list, note a piè di pagina, emoji. Il front matter YAML compare in un blocco chiuso, "Metadati". I file senza BOM vengono letti come UTF-8; se non sono UTF-8 valido, come Windows-1252.
-- **`[[wikilink]]`** in stile Obsidian/workbrain, con le forme `[[x|alias]]` e `[[x#Titolo sezione]]`:
-  - il target si cerca relativo alla cartella del file e poi a ogni cartella antenata, fino alla radice del progetto (`.git` o `.obsidian`); se non c'è, si cerca per nome dentro la radice;
-  - l'ancora si confronta con il testo dei titoli, quindi funziona anche con accenti e numerazione;
-  - `![[immagine.png]]` mostra l'immagine; `![[nota]]` diventa un link (l'inclusione del contenuto non è supportata);
-  - un link non risolto appare in rosso tratteggiato;
-  - per sicurezza non sono accettati percorsi assoluti, unità, UNC né `..`.
-- **Link**:
-  - i link relativi tra file `.md` e le immagini locali funzionano;
-  - i link web si aprono nel browser predefinito, ma solo con un clic;
-  - gli altri file locali si aprono con l'app associata solo con un clic, solo per i tipi ammessi (documenti Office, PDF, immagini, testo) e sempre dopo una conferma;
-  - gli eseguibili e gli altri tipi non vengono mai aperti: Zing offre di mostrarli in Esplora file.
-- **Immagini**: solo locali, `data:` e PlantUML. Le immagini remote (`https://…`) sono bloccate, perché un .md non deve poter far partire richieste verso server scelti da lui.
-- **Mermaid** con libreria locale (`assets/mermaid.min.js` 11.17.2), quindi offline.
-- **PlantUML** tramite il server pubblico `plantuml.com`, **su richiesta**: sotto ogni diagramma c'è il pulsante "Mostra diagramma", che invia il testo del diagramma al server. Con "usa sempre plantuml.com" la scelta viene ricordata (`"PlantUml": "always"` in `settings.json`; si torna indietro con `"ask"`).
-- **Pannello ad albero nativo** a sinistra (`Ctrl+B`):
-  - mostra cartelle e file Markdown e carica una cartella solo quando la apri;
-  - la radice è il progetto del file aperto e si cambia con `…` o dal menu del tasto destro;
-  - si aggiorna da solo quando i file cambiano.
-- **Indicatori di caricamento**: all'avvio, mentre WebView2 parte (circa 0,6 s), la finestra mostra "Apertura di …" già nel tema giusto. Le navigazioni che superano i 200 ms mostrano una barra sottile in alto, e i diagrammi un segnaposto finché non sono resi.
-- **Indice dei titoli** a destra (tasto `T`), tema automatico/chiaro/scuro (tasto `D`) e ricarica automatica quando il file cambia, mantenendo la posizione di scorrimento.
-- **Scorciatoie**: `Ctrl+O` apre un file, `Ctrl+F` cerca, `Alt+←` torna indietro, `Ctrl+rotella` regola lo zoom, `Ctrl+P` stampa.
-- **Cartelle di rete**: Zing legge solo dalla condivisione (`\\server\share`) del file aperto dall'utente, non da altre.
+> The user interface is currently in Italian.
 
-## Installazione su altri PC
+## Download and install
 
-Il file da distribuire è `artifacts\Zing-<versione>-x64.msi`, che si genera con `.\build-installer.ps1`. Usa WiX 5 come pacchetto NuGet, quindi non serve installare niente.
+Download `Zing-<version>-x64.msi` from the [Releases](https://github.com/TommySimoEvo/Zing/releases) page and run it.
 
-- **Installazione**: per singolo utente, senza permessi di amministratore. I file vanno in `%LOCALAPPDATA%\Programs\Zing`; viene creato il collegamento nel menu Start e Zing viene registrato per `.md` e `.markdown` in HKCU.
-- **Prerequisiti**: solo il runtime WebView2, già presente su Windows 11. Il runtime .NET è incluso (publish self-contained, circa 115 MB su disco).
-- **Programma predefinito**: Windows non permette a un programma di impostarsi da solo. L'utente sceglie *Apri con → Scegli un'altra app → Zing → Sempre*.
-- **Aggiornamento**: una nuova versione sostituisce quella installata, anche se ha lo stesso numero di versione.
-- **Disinstallazione**: da *Impostazioni → App*. Restano preferenze e cache in `%LOCALAPPDATA%\Zing`, da cancellare a mano se servisse.
-- **Firma**: l'MSI non è firmato, quindi SmartScreen può mostrare un avviso.
+- **No admin rights needed.** Zing installs for the current user only, in `%LOCALAPPDATA%\Programs\Zing`, adds a Start menu shortcut and registers itself for `.md` and `.markdown` files.
+- **No prerequisites** on Windows 11: the .NET runtime is bundled. The only requirement is the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/), which ships with Windows 11 and is usually present on up-to-date Windows 10.
+- **Make it the default app**: Windows does not let programs set themselves as default. Right-click a `.md` file → *Open with* → *Choose another app* → *Zing* → *Always*.
+- **Upgrade**: install the new MSI over the old one.
+- **Uninstall**: *Settings → Apps*. Preferences and cache in `%LOCALAPPDATA%\Zing` are left behind; delete the folder if you want a clean removal.
+- **Unsigned installer**: the MSI is not code-signed, so Windows SmartScreen may show a warning ("Windows protected your PC" → *More info* → *Run anyway*).
 
-In alternativa, senza MSI: `Zing.exe --register` / `--unregister` scrive o rimuove le stesse chiavi HKCU. Con l'MSI installato, `--unregister` rimanda a *Impostazioni → App*.
+## Features
 
-> **Nota per chi sviluppa da Claude desktop.** Claude desktop è un'app MSIX: i processi che lancia vedono una copia virtualizzata di HKCU, e in parte di AppData. Una registrazione fatta dalla sua shell non arriva al registro reale. Per verificare il registro reale si legge via WMI (`StdRegProv` su `HKEY_USERS\<SID>`); per installare davvero si usa l'MSI.
+- **GitHub-flavored Markdown**: tables, task lists, footnotes, emoji, auto-links. YAML front matter is shown in a collapsed "Metadata" block. Files without a BOM are read as UTF-8, falling back to Windows-1252 when they are not valid UTF-8.
+- **Mermaid diagrams**, rendered offline with a bundled copy of Mermaid.
+- **PlantUML diagrams**, rendered by the public `plantuml.com` server **only on request**: each diagram has a "show diagram" button, because rendering sends the diagram source to that server. You can choose to always allow it (see [Settings](#settings)).
+- **Obsidian-style `[[wikilinks]]`**, including `[[note|alias]]`, `[[note#Heading]]` and `![[image.png]]`:
+  - targets are resolved relative to the current file, then to each parent folder up to the project root (the nearest folder containing `.git` or `.obsidian`), then by file name anywhere under that root;
+  - heading anchors match the heading text, so accents and numbering work;
+  - `![[note]]` becomes a link (embedding a note's content is not supported);
+  - unresolved links are shown in dashed red.
+- **Folder tree** (`Ctrl+B`): Markdown files of the current project, loaded lazily and refreshed when files change. Change the root with the `…` button or the right-click menu.
+- **Table of contents** (`T`) built from the headings.
+- **Themes**: automatic (follows Windows), light, dark (`D` to cycle).
+- **Live reload** when the file changes on disk, keeping the scroll position.
+- **Links**: relative links between Markdown files and local images just work; web links open in your default browser.
 
-## Test end-to-end
+### Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `Ctrl+O` | Open a file |
+| `Ctrl+F` | Find in page |
+| `Ctrl+B` | Show/hide the folder tree |
+| `T` | Show/hide the table of contents |
+| `D` | Cycle theme (auto / light / dark) |
+| `Alt+←` | Back |
+| `Ctrl+mouse wheel` | Zoom |
+| `Ctrl+P` | Print |
+
+## Security model
+
+Zing treats every Markdown file as **untrusted**, since you may open files you did not write:
+
+- **No scripts from the document**: a Content Security Policy with a per-page nonce blocks any script embedded in the Markdown. Only Zing's own scripts run.
+- **No remote content**: remote images (`https://…`) are blocked, so opening a file cannot make requests to servers chosen by its author. Images can be local files, `data:` URIs or PlantUML (on request).
+- **No silent launches**: web links open only on click. Other local files open with their associated app only on click, only for an allow-list of document types (Office, PDF, images, text) and only after a confirmation. Executables and other types are never launched — Zing offers to show them in File Explorer instead.
+- **Contained wikilinks**: absolute paths, drive letters, UNC paths and `..` are rejected.
+- **Network shares**: Zing reads only from the share (`\\server\share`) of the file you opened, not from others.
+
+The `samples/security/` folder contains test documents for these cases.
+
+## Settings
+
+Preferences are stored in `%LOCALAPPDATA%\Zing\settings.json` and are set from the UI (window size, folder tree visibility and width, PlantUML choice). The PlantUML choice can be reset by hand:
+
+```json
+{ "PlantUml": "ask" }
+```
+
+Use `"always"` to render PlantUML diagrams without asking.
+
+## Command line
+
+```
+Zing.exe [file.md]          Open a file
+Zing.exe --register         Register Zing for .md/.markdown (current user, no MSI)
+Zing.exe --unregister       Remove that registration
+Zing.exe --selftest <file.md[#heading]> <output-prefix>
+                            Render a file headlessly and write a JSON report plus screenshots
+```
+
+`--register` writes the same per-user registry keys as the MSI; use it if you run Zing from a folder instead of installing it. If the MSI is installed, uninstall from *Settings → Apps* instead.
+
+## Build from source
+
+Requirements: Windows, the [.NET 10 SDK](https://dotnet.microsoft.com/download). WiX 5 is pulled in as a NuGet SDK, nothing else to install.
+
+```powershell
+# Run from source
+dotnet run --project src\Zing -- samples\test.md
+
+# Build the MSI installer into artifacts\
+.\build-installer.ps1
+```
+
+The installer is a self-contained publish (about 115 MB on disk, ~40 MB compressed MSI): larger than a framework-dependent build, but with no runtime to install.
+
+### End-to-end test
 
 ```powershell
 Zing.exe --selftest samples\test.md $env:TEMP\zt
-Zing.exe --selftest "samples\security\ancore.md#Perché funziona" $env:TEMP\zt-ancora
 ```
 
-Il comando produce tre file:
-- `zt.json`: report con i tempi di avvio (`tree.timing`, in ms dall'avvio del processo; `page.perf`, in ms dall'inizio della navigazione), titolo, numero di blocchi Mermaid resi, PlantUML in attesa o caricati, wikilink risolti e mancanti, posizione di scorrimento, errori JS e stato dell'albero;
-- `zt.png`: screenshot della pagina;
-- `zt-window.png`: screenshot della finestra intera, oppure `zt-screenshot-error.txt` se lo schermo non è catturabile.
+This writes:
 
-Con la variabile `ZING_PLANTUML=always`, valida solo in self-test, i diagrammi PlantUML vengono resi senza chiedere.
+- `zt.json` — startup timings, page title, number of Mermaid diagrams rendered, PlantUML diagrams pending/loaded, resolved and missing wikilinks, scroll position, JavaScript errors and folder tree state;
+- `zt.png` — screenshot of the page;
+- `zt-window.png` — screenshot of the whole window (or `zt-screenshot-error.txt` if the screen cannot be captured).
 
-`samples/security/` contiene i casi di sicurezza:
-- `meta.md` fa un meta refresh verso `marker.bat`, che non deve creare `%TEMP%\zing-pwned.txt`, e contiene anche un'immagine UNC, un'immagine remota e wikilink assoluti e con `..`;
-- `ansi.md` è un file in Windows-1252;
-- `ancore.md` serve a provare le ancore con accenti e numerazione.
+Set `ZING_PLANTUML=always` to render PlantUML diagrams during a self-test without the prompt.
 
-## Decisioni
+Test documents in `samples/security/`:
 
-1. **WinForms + WebView2**, con il runtime .NET incluso nell'MSI (scelta di Tommaso, 06/11/2026): niente prerequisiti in cambio di un MSI da 40 MB invece di 1,5 MB.
-2. **Finto host `https://zing.invalid/f/<percorso>`.** I file sono serviti da `WebResourceRequested`, con lettura e rendering in background. Così i link relativi e il tasto indietro funzionano senza codice aggiuntivo. Il dominio `.invalid` è riservato e fallisce subito. Con `.local`, usato fino alla 0.3.0, Chromium tentava una risoluzione mDNS e ogni pagina si apriva con circa 2 s di ritardo (misura del 06/11/2026).
-3. **Il .md non è fidato.**
-   - Una CSP con nonce impedisce che gli script presenti nel .md vengano eseguiti.
-   - Le immagini sono limitate a file locali e PlantUML.
-   - Le uscite verso il sistema (shell, altri processi, rete) richiedono un clic, passano da un elenco di tipi ammessi e da una conferma: vedi `LinkPolicy.cs` e la review del 06/11/2026.
-4. **Wikilink convertiti prima di Markdig.** La conversione salta i blocchi recintati e gli span di codice su una riga, non i blocchi indentati di 4 spazi: saltarli romperebbe i wikilink nelle liste annidate.
-5. **Albero come controllo nativo** (`TreeView` in uno `SplitContainer`): lo stato resta tra un file e l'altro. Il tema dell'albero segue quello della pagina.
-6. **Nome Zing** (decisione di Tommaso, 06/11/2026). L'icona è `zing.ico`. La cartella del repository resta `md-viewer`.
-7. **PlantUML su richiesta per tutti** (decisione di Tommaso, 06/11/2026): il testo dei diagrammi esce dal PC solo dopo un clic o una scelta esplicita.
+- `meta.md` — a meta refresh to `marker.bat` (must **not** create `%TEMP%\zing-pwned.txt`), plus a UNC image, a remote image and absolute/`..` wikilinks;
+- `ansi.md` — a Windows-1252 file;
+- `ancore.md` — heading anchors with accents and numbering.
+
+## How it works
+
+- **WinForms + WebView2**, with [Markdig](https://github.com/xoofx/markdig) for Markdown parsing.
+- **Virtual host**: files are served from `https://zing.invalid/f/<path>` through WebView2's `WebResourceRequested`, read and rendered on a background thread. Relative links and the back button work with no extra code. The reserved `.invalid` TLD fails DNS resolution immediately; an earlier `.local` host triggered mDNS lookups that added about 2 seconds to every page load.
+- **Wikilinks are converted before Markdig**, skipping fenced code blocks and inline code spans. Indented (4-space) code blocks are not skipped, because doing so would break wikilinks inside nested lists.
+- **Native folder tree** (`TreeView` in a `SplitContainer`), so its state survives navigation between files; its theme follows the page.
+
+| File | Responsibility |
+|---|---|
+| `src/Zing/MainForm.cs` | Window, WebView2 setup, navigation, link handling |
+| `src/Zing/MarkdownRenderer.cs` | Markdown → HTML, front matter, encoding detection |
+| `src/Zing/WikiLinks.cs` | Wikilink parsing and resolution |
+| `src/Zing/LinkPolicy.cs` | What may be opened, and how |
+| `src/Zing/LocalUrl.cs` | Mapping between file paths and the virtual host |
+| `src/Zing/FolderTree.cs` | Folder tree panel |
+| `src/Zing/FileAssociation.cs` | `--register` / `--unregister` |
+| `src/Zing/assets/` | Page CSS/JS and the bundled Mermaid library |
+| `installer/` | WiX 5 MSI project |
+
+## License
+
+[MIT](LICENSE). Bundled third-party components keep their own licenses: [Mermaid](https://github.com/mermaid-js/mermaid) (MIT), [Markdig](https://github.com/xoofx/markdig) (BSD-2-Clause), [WebView2 SDK](https://www.nuget.org/packages/Microsoft.Web.WebView2) (Microsoft license).
