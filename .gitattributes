@@ -1,0 +1,3 @@
+*.ico binary
+samples/security/ansi.md -text
+src/Zing/assets/mermaid.min.js -text

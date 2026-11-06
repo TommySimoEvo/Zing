@@ -1,0 +1,66 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!--
+    MSI per singolo utente: nessun privilegio amministrativo, installa in %LOCALAPPDATA%\Programs\Zing,
+    registra Zing per .md/.markdown in HKCU (stesse chiavi di FileAssociation.cs) e crea il
+    collegamento nel menu Start. Contiene il runtime .NET (publish self-contained): nessun prerequisito
+    oltre al runtime WebView2, già presente su Windows 11.
+  -->
+  <Package Name="Zing" Manufacturer="Zing" Version="$(var.Version)" Language="1040" Codepage="1252"
+           UpgradeCode="241ED2DF-4E9D-40EC-BE50-B07285FD50BC" Scope="perUser" Compressed="yes">
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="È già installata una versione più recente di Zing." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="ZingIcon" SourceFile="..\src\Zing\zing.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ZingIcon" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsDir" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Zing" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="Zing">
+      <Files Directory="INSTALLFOLDER" Include="$(var.PublishDir)**" />
+      <ComponentGroupRef Id="Registration" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="Registration" Directory="INSTALLFOLDER">
+
+      <Component Id="ProgIdComponent" Guid="*">
+        <RegistryKey Root="HKCU" Key="Software\Classes\Zing.Markdown">
+          <RegistryValue Type="string" Value="Documento Markdown" KeyPath="yes" />
+          <RegistryValue Key="DefaultIcon" Type="string" Value="&quot;[INSTALLFOLDER]Zing.exe&quot;,0" />
+          <RegistryValue Key="shell\open\command" Type="string" Value="&quot;[INSTALLFOLDER]Zing.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+        <RegistryKey Root="HKCU" Key="Software\Classes\Applications\Zing.exe">
+          <RegistryValue Name="FriendlyAppName" Type="string" Value="Zing" />
+          <RegistryValue Key="shell\open\command" Type="string" Value="&quot;[INSTALLFOLDER]Zing.exe&quot; &quot;%1&quot;" />
+          <RegistryValue Key="SupportedTypes" Name=".md" Type="string" Value="" />
+          <RegistryValue Key="SupportedTypes" Name=".markdown" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryValue Root="HKCU" Key="Software\Classes\.md\OpenWithProgids" Name="Zing.Markdown" Type="string" Value="" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.markdown\OpenWithProgids" Name="Zing.Markdown" Type="string" Value="" />
+        <RegistryKey Root="HKCU" Key="Software\Zing\Capabilities">
+          <RegistryValue Name="ApplicationName" Type="string" Value="Zing" />
+          <RegistryValue Name="ApplicationDescription" Type="string" Value="Visualizzatore leggero di file Markdown" />
+          <RegistryValue Key="FileAssociations" Name=".md" Type="string" Value="Zing.Markdown" />
+          <RegistryValue Key="FileAssociations" Name=".markdown" Type="string" Value="Zing.Markdown" />
+        </RegistryKey>
+        <RegistryValue Root="HKCU" Key="Software\RegisteredApplications" Name="Zing" Type="string" Value="Software\Zing\Capabilities" />
+      </Component>
+
+      <Component Id="StartMenuShortcut" Guid="*">
+        <Shortcut Id="ZingStartMenu" Directory="ProgramMenuFolder" Name="Zing"
+                  Description="Visualizzatore di file Markdown" Target="[INSTALLFOLDER]Zing.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\Zing\Installer" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+      </Component>
+
+    </ComponentGroup>
+  </Fragment>
+</Wix>
