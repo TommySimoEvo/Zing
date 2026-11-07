@@ -1,0 +1,12 @@
+<Project>
+
+  <!-- The WebView2 package always references its WPF control too, in Zing and in every project that
+       references Zing. Zing is WinForms only, and that assembly's WindowsBase 5.0 reference is what
+       raised warning MSB3277. -->
+  <Target Name="DropWebView2Wpf" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+
+</Project>
