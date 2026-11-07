@@ -142,5 +142,34 @@ process, so the argument must stay identical across versions that may run
 side by side; a change to it is a new ADR. Upgrading from 0.4 (no
 argument) while a 0.4 window is still open: the new version's WebView2
 probably cannot start until that window is closed (QA-001 F4, not
-reproduced); the release notes say to close Zing before upgrading. Web links still open in the
+reproduced); the release notes say to close Zing before upgrading.
+Known limit (SEC-v0.5.0 F2): a Markdown image addressed to
+`www.plantuml.com/plantuml/…` is fetched without the PlantUML consent,
+because neither the CSP nor the filter can tell it from a diagram the user
+allowed; it can reach only plantuml.com.
+
+## ADR-006 — Local paths by allow-list
+
+Date: 2026-11-07. Status: accepted.
+
+**Context.** The pre-release security review (SEC-v0.5.0 F1) found that
+the network-path guard was a block-list of prefixes (`\\`, `//`, `\\?\`,
+`\\.\`). A page could request `/f/%2F%3F%3F/UNC/host/share/x.png`, which
+decodes to `\??\UNC\host\share\x.png`: not on the list, so Zing called
+`File.Exists` on it and Windows opened an SMB connection (and an NTLM
+attempt) to the host the document's author chose. Present since 0.4.0;
+0.5.0's HTML files made it easier to reach.
+
+**Options.** Add the missing prefixes (`\??\`, `GLOBALROOT`, …) to the
+block-list, or allow only the path forms Zing needs.
+
+**Decision.** Allow-list in `LinkPolicy.IsPathAllowed`: a drive path
+(`X:\…`), or a `\\server\share\…` path inside the share the user opened.
+Everything else is refused: NT and device paths, relative and
+drive-relative paths. Unit tests cover the reviewer's URLs and fail on the
+old guard; the reviewer's probe files make no SMB connection with the new
+one (378 attempts before).
+
+**Consequences.** A path form Windows may add in future is refused by
+default. Mapped network drives (`Z:\`) remain allowed: the user mapped them. Web links still open in the
 default browser on click, outside WebView2.
