@@ -16,6 +16,8 @@ internal sealed class FolderTree : Panel
     private readonly Panel _header;
     private readonly Label _rootLabel;
     private readonly Button _rootButton;
+    private readonly Button _upButton;
+    private const string UpCommand = "Cartella superiore";
     private readonly ToolTip _tip = new();
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = 500 };
     private readonly HashSet<string> _dirty = new(StringComparer.OrdinalIgnoreCase);
@@ -53,8 +55,14 @@ internal sealed class FolderTree : Panel
         _rootButton.FlatAppearance.BorderSize = 0;
         _rootButton.Click += (_, _) => ChooseRoot();
         _tip.SetToolTip(_rootButton, "Cambia cartella radice");
+        _upButton = new Button { Dock = DockStyle.Right, Width = 32, Text = "↑", FlatStyle = FlatStyle.Flat, TabStop = false, AccessibleName = UpCommand, Enabled = false };
+        _upButton.FlatAppearance.BorderSize = 0;
+        _upButton.Font = new Font(Font.FontFamily, 11f, FontStyle.Bold); // a thin arrow renders as coloured ClearType fringes
+        _upButton.Click += (_, _) => GoUp();
+        _tip.SetToolTip(_upButton, UpCommand + " (Alt+↑)");
         _header = new Panel { Dock = DockStyle.Top, Height = 30 };
         _header.Controls.Add(_rootLabel);
+        _header.Controls.Add(_upButton);
         _header.Controls.Add(_rootButton);
 
         Controls.Add(_header);
@@ -88,12 +96,33 @@ internal sealed class FolderTree : Panel
         RootPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir));
         _rootLabel.Text = Path.GetFileName(RootPath) is { Length: > 0 } name ? name : RootPath;
         _tip.SetToolTip(_rootLabel, RootPath);
+        _upButton.Enabled = ParentOf(RootPath) is not null;
 
         _tree.BeginUpdate();
         _tree.Nodes.Clear();
         AddChildren(_tree.Nodes, RootPath);
         _tree.EndUpdate();
         StartWatcher();
+    }
+
+    /// <summary>
+    /// Parent folder of a tree root, or null at a drive root (C:\) or a share root (\\server\share):
+    /// a share root is the top, so climbing never reaches another share.
+    /// </summary>
+    public static string? ParentOf(string root)
+    {
+        string full = Path.TrimEndingDirectorySeparator(root);
+        if (LinkPolicy.NetworkRoot(full) is { } share && string.Equals(share, full, StringComparison.OrdinalIgnoreCase)) return null;
+        return Path.GetDirectoryName(full);
+    }
+
+    /// <summary>Moves the root to its parent folder, keeping the selected file selected and visible.</summary>
+    public void GoUp()
+    {
+        if (RootPath is null || ParentOf(RootPath) is not { } parent) return;
+        string? selected = _tree.SelectedNode?.Tag as string;
+        SetRoot(parent);
+        if (selected is not null && IsUnder(selected, RootPath!)) Reveal(selected);
     }
 
     private void ChooseRoot()
@@ -118,7 +147,7 @@ internal sealed class FolderTree : Panel
                 n.Nodes.Add(new TreeNode(Placeholder));
                 nodes.Add(n);
             }
-            foreach (var f in info.EnumerateFiles().Where(f => LocalUrl.IsMarkdown(f.Name)).OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase))
+            foreach (var f in info.EnumerateFiles().Where(f => LocalUrl.IsDocument(f.Name)).OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase))
                 nodes.Add(new TreeNode(f.Name, IconFile, IconFile) { Tag = f.FullName, Name = f.Name });
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
@@ -198,7 +227,7 @@ internal sealed class FolderTree : Panel
         if (RootPath is null) return;
         string rel = Path.GetRelativePath(RootPath, path);
         if (rel.Split(Path.DirectorySeparatorChar).Any(s => WikiLinks.IsExcludedDir(s) || s.StartsWith('.'))) return;
-        if (Path.HasExtension(path) && !LocalUrl.IsMarkdown(path) && !Directory.Exists(path)) return;
+        if (Path.HasExtension(path) && !LocalUrl.IsDocument(path) && !Directory.Exists(path)) return;
         string? parent = Path.GetDirectoryName(path);
         if (parent is null) return;
         _dirty.Add(parent);
@@ -265,6 +294,7 @@ internal sealed class FolderTree : Panel
 
     private void OnTreeKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Alt && e.KeyCode == Keys.Up) { e.Handled = e.SuppressKeyPress = true; GoUp(); return; }
         if (e.KeyCode != Keys.Enter) return;
         e.Handled = e.SuppressKeyPress = true;
         Activate(_tree.SelectedNode);
@@ -291,11 +321,12 @@ internal sealed class FolderTree : Panel
         {
             if (_tree.SelectedNode?.Tag is string p && Directory.Exists(p)) SetRoot(p);
         });
-        menu.Items.Add("Risali di una cartella", null, (_, _) =>
+        menu.Items.Add(UpCommand, null, (_, _) => GoUp());
+        menu.Opening += (_, _) =>
         {
-            if (RootPath is not null && Path.GetDirectoryName(RootPath) is { } parent) SetRoot(parent);
-        });
-        menu.Opening += (_, _) => menu.Items[2].Enabled = _tree.SelectedNode is { } n && IsDirNode(n);
+            menu.Items[2].Enabled = _tree.SelectedNode is { } n && IsDirNode(n);
+            menu.Items[3].Enabled = RootPath is not null && ParentOf(RootPath) is not null;
+        };
         return menu;
     }
 
@@ -312,8 +343,8 @@ internal sealed class FolderTree : Panel
         _dark = dark;
         Color back = dark ? Color.FromArgb(0x15, 0x1b, 0x23) : Color.FromArgb(0xf6, 0xf8, 0xfa);
         Color fore = dark ? Color.FromArgb(0xe6, 0xed, 0xf3) : Color.FromArgb(0x1f, 0x23, 0x28);
-        BackColor = _tree.BackColor = _header.BackColor = _rootButton.BackColor = back;
-        ForeColor = _tree.ForeColor = _rootLabel.ForeColor = _rootButton.ForeColor = fore;
+        BackColor = _tree.BackColor = _header.BackColor = _rootButton.BackColor = _upButton.BackColor = back;
+        ForeColor = _tree.ForeColor = _rootLabel.ForeColor = _rootButton.ForeColor = _upButton.ForeColor = fore;
         ApplyNativeTheme();
     }
 
@@ -361,6 +392,7 @@ internal sealed class FolderTree : Panel
         selected = _tree.SelectedNode?.Tag as string,
         topLevelNodes = _tree.Nodes.Count,
         visible = Visible,
+        canGoUp = _upButton.Enabled,
     };
 
     protected override void Dispose(bool disposing)

@@ -1,0 +1,5 @@
+@startuml
+actor Utente
+Utente -> Zing : apre diagram.puml
+Zing -> Utente : chiede il consenso per plantuml.com
+@enduml

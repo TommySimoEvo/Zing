@@ -27,10 +27,15 @@ internal sealed class MainForm : Form
     private readonly ProgressBar _navBar = new() { Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 25, Height = 3, Dock = DockStyle.Top, Visible = false };
     private readonly System.Windows.Forms.Timer _navDelay = new() { Interval = 200 };
 
-    public MainForm(string file, string? selfTestOutput = null)
+    private readonly SingleInstance? _primary;
+    private int _treeToggles; // self-test: tree toggles requested by the page
+    private bool _selfTestStarted;
+
+    public MainForm(string file, string? selfTestOutput = null, SingleInstance? primary = null)
     {
         _initialFile = file;
         _selfTestOutput = selfTestOutput;
+        _primary = primary;
         Text = "Zing";
         Width = _settings.WindowWidth;
         Height = _settings.WindowHeight;
@@ -155,7 +160,9 @@ internal sealed class MainForm : Form
     public static OpenFileDialog CreateOpenDialog(string? currentFile) => new()
     {
         Title = "Apri file Markdown",
-        Filter = "Markdown (*.md;*.markdown)|*.md;*.markdown;*.mdown;*.mkd|Tutti i file (*.*)|*.*",
+        Filter = $"Documenti ({string.Join(";", LocalUrl.DocumentExtensions.Select(e => "*" + e))})|{string.Join(";", LocalUrl.DocumentExtensions.Select(e => "*" + e))}" +
+                 "|Markdown (*.md;*.markdown)|*.md;*.markdown;*.mdown;*.mkd|HTML (*.html;*.htm)|*.html;*.htm" +
+                 "|Diagrammi (*.mmd;*.mermaid;*.puml;*.plantuml)|*.mmd;*.mermaid;*.puml;*.plantuml;*.pu;*.iuml|Tutti i file (*.*)|*.*",
         InitialDirectory = currentFile is null ? null : Path.GetDirectoryName(currentFile),
     };
 
@@ -177,6 +184,7 @@ internal sealed class MainForm : Form
         }
 
         var core = _web.CoreWebView2;
+        try { await core.AddScriptToExecuteOnDocumentCreatedAsync(HtmlShortcutsScript); } catch (Exception) { /* shortcuts only */ }
         core.Settings.IsStatusBarEnabled = true;
         core.Settings.AreDevToolsEnabled = Debugger.IsAttached;
         core.Settings.IsPasswordAutosaveEnabled = false;
@@ -187,7 +195,7 @@ internal sealed class MainForm : Form
         core.NavigationStarting += (_, e) => { if (!e.Cancel) { _navDelay.Stop(); _navDelay.Start(); } };
         core.NewWindowRequested += OnNewWindowRequested;
         core.NavigationCompleted += OnNavigationCompleted;
-        core.DocumentTitleChanged += (_, _) => Text = core.DocumentTitle + " - Zing";
+        core.DocumentTitleChanged += (_, _) => Text = WindowTitle(core.DocumentTitle, core.Source) + " - Zing";
         core.WebMessageReceived += OnWebMessageReceived;
 
         // "file.md#Titolo" (usato dal self-test per provare le ancore)
@@ -198,6 +206,43 @@ internal sealed class MainForm : Form
             core.Navigate(LocalUrl.FromPath(_initialFile[..hash]) + "#" + Uri.EscapeDataString(_initialFile[(hash + 1)..]));
         }
         else Navigate(_initialFile);
+
+        // only now can a handed-over file be shown; until then later launches retry (SingleInstance.TrySend)
+        _primary?.Listen(path =>
+        {
+            try
+            {
+                if (IsDisposed || !IsHandleCreated) return false;
+                BeginInvoke(() => OnHandOff(path));
+                return true;
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException) { return false; }
+        });
+    }
+
+    /// <summary>
+    /// A file opened from Explorer while this window is open (FA-001 §2): the window comes forward and
+    /// shows it like a command-line open; the previous file stays in the back history.
+    /// </summary>
+    private void OnHandOff(string? path)
+    {
+        if (IsDisposed) return;
+        if (WindowState == FormWindowState.Minimized) ShowWindow(Handle, SwRestore);
+        Activate();
+        SetForegroundWindow(Handle);
+        if (path is not null && _web.CoreWebView2 is not null) Navigate(path);
+    }
+
+    private const int SwRestore = 9;
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hwnd, int command);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);
+
+    /// <summary>The page's title; for an HTML file without a title (WebView2 then reports the URL), its file name.</summary>
+    internal static string WindowTitle(string documentTitle, string source)
+    {
+        if (!string.IsNullOrWhiteSpace(documentTitle) && !documentTitle.Contains("zing.invalid", StringComparison.OrdinalIgnoreCase))
+            return documentTitle.Trim();
+        return LocalUrl.ToPath(source) is { } path ? Path.GetFileName(path) : "Zing";
     }
 
     /// <summary>Apertura decisa dall'utente (riga di comando, Ctrl+O, albero, trascinamento): la sua condivisione di rete diventa fidata.</summary>
@@ -212,6 +257,23 @@ internal sealed class MainForm : Form
         _selfTestOutput is not null && Environment.GetEnvironmentVariable("ZING_PLANTUML") == "always" ? "always"
         : _settings.PlantUml == "always" ? "always" : "ask";
 
+    /// <summary>
+    /// An HTML file gets no viewer.js and runs none of its own scripts, so Ctrl+O and Ctrl+B would be
+    /// lost inside it (FA-001 R1.11). WebView2 runs this script itself, outside the page's
+    /// Content-Security-Policy, and only on Zing's HTML pages; it sends the same commands as viewer.js.
+    /// </summary>
+    private const string HtmlShortcutsScript = """
+        (() => {
+          if (location.origin !== 'https://zing.invalid' || !/\.html?$/i.test(location.pathname)) return;
+          document.addEventListener('keydown', e => {
+            if (!e.ctrlKey || e.altKey || e.metaKey) return;
+            const k = e.key.toLowerCase();
+            if (k === 'o') { e.preventDefault(); window.chrome.webview.postMessage('open'); }
+            else if (k === 'b') { e.preventDefault(); window.chrome.webview.postMessage('toggle-tree'); }
+          }, true);
+        })();
+        """;
+
     /// <summary>Comandi inviati da viewer.js (le scorciatoie da tastiera nascono dentro la pagina).</summary>
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
@@ -219,7 +281,7 @@ internal sealed class MainForm : Form
         switch (e.TryGetWebMessageAsString())
         {
             case "open": ShowOpenDialog(); break;
-            case "toggle-tree": ToggleTree(); break;
+            case "toggle-tree": ToggleTree(); _treeToggles++; break;
             case "theme:dark": OnPageTheme(true); break;
             case "theme:light": OnPageTheme(false); break;
             case "plantuml:always":
@@ -289,9 +351,12 @@ internal sealed class MainForm : Form
             if (!File.Exists(path))
                 return HtmlResult(404, ErrorPage("File non trovato", path));
 
-            if (LocalUrl.IsMarkdown(path))
+            var kind = LocalUrl.KindOf(path);
+            if (kind is DocumentKind.Markdown or DocumentKind.Mermaid or DocumentKind.PlantUml)
             {
-                var (html, nonce) = MarkdownRenderer.RenderPage(path, plantUmlMode);
+                var (html, nonce) = kind == DocumentKind.Markdown
+                    ? MarkdownRenderer.RenderPage(path, plantUmlMode)
+                    : MarkdownRenderer.RenderDiagramPage(path, kind, plantUmlMode);
                 return new ResourceResult(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(html)), 200, "OK",
                     "Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\n" +
                     "Content-Security-Policy: " + MarkdownRenderer.ContentSecurityPolicy(nonce));
@@ -306,6 +371,15 @@ internal sealed class MainForm : Form
                 bytes = new byte[fs.Length];
                 fs.ReadExactly(bytes);
             }
+
+            if (kind == DocumentKind.Html)
+            {
+                // the page's own meta charset wins; without one, UTF-8 rather than the system code page
+                string type = MarkdownRenderer.DeclaresCharset(bytes) ? "text/html" : "text/html; charset=utf-8";
+                return new ResourceResult(new MemoryStream(bytes), 200, "OK",
+                    $"Content-Type: {type}\r\nCache-Control: no-store\r\nContent-Security-Policy: {MarkdownRenderer.HtmlFileContentSecurityPolicy}");
+            }
+
             return new ResourceResult(new MemoryStream(bytes), 200, "OK",
                 $"Content-Type: {LocalUrl.MimeType(path)}\r\nCache-Control: no-store\r\nContent-Security-Policy: default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
         }
@@ -346,7 +420,7 @@ internal sealed class MainForm : Form
             {
                 // file trascinato nella finestra o link file:///
                 e.Cancel = true;
-                if (LocalUrl.IsMarkdown(path)) { if (e.IsUserInitiated) Navigate(path); }
+                if (LocalUrl.IsDocument(path)) { if (e.IsUserInitiated) Navigate(path); }
                 else TryOpenExternalFile(path, e.IsUserInitiated);
                 return;
             }
@@ -375,7 +449,7 @@ internal sealed class MainForm : Form
         }
         if (!LinkPolicy.IsPathAllowed(path, _trustedNetworkRoot)) return;
 
-        if (LocalUrl.IsMarkdown(path))
+        if (LocalUrl.IsDocument(path))
         {
             if (!File.Exists(path) || path.Contains('"')) return;
             var psi = new ProcessStartInfo(Application.ExecutablePath) { UseShellExecute = false };
@@ -422,7 +496,7 @@ internal sealed class MainForm : Form
     {
         string? path = LocalUrl.ToPath(_web.CoreWebView2.Source);
         bool rendered = e.IsSuccess && e.HttpStatusCode == 200; // una pagina 404/403 non sposta albero né watcher
-        if (rendered && path is not null && LocalUrl.IsMarkdown(path) && !string.Equals(path, _currentFile, StringComparison.OrdinalIgnoreCase))
+        if (rendered && path is not null && LocalUrl.IsDocument(path) && !string.Equals(path, _currentFile, StringComparison.OrdinalIgnoreCase))
         {
             _currentFile = path;
             WatchFile(path);
@@ -435,7 +509,8 @@ internal sealed class MainForm : Form
         _navDelay.Stop();
         _navBar.Visible = false;
         if (_startupOverlay.Visible) { _startupOverlay.Visible = false; _startupBar.MarqueeAnimationSpeed = 0; }
-        if (_selfTestOutput is not null) await RunSelfTestAsync();
+        // once: a cancelled navigation (a meta refresh, a blocked link) completes too
+        if (_selfTestOutput is not null && !_selfTestStarted) { _selfTestStarted = true; await RunSelfTestAsync(); }
     }
 
     private void WatchFile(string path)
@@ -468,10 +543,18 @@ internal sealed class MainForm : Form
     private async Task RunSelfTestAsync()
     {
         string prefix = _selfTestOutput!;
+        string? shownPath = LocalUrl.ToPath(_web.CoreWebView2.Source);
+        var kind = shownPath is null ? DocumentKind.None : LocalUrl.KindOf(shownPath);
+        // an HTML file runs none of its own scripts and gets no viewer.js: Zing measures it from outside
+        // (ExecuteScriptAsync is not bound by the page's Content-Security-Policy)
+        string probe = kind == DocumentKind.Html
+            ? "JSON.stringify((() => { const imgs = [...document.images]; return { ready: document.readyState === 'complete', title: document.title, " +
+              "images: imgs.length, imagesLoaded: imgs.filter(i => i.complete && i.naturalWidth > 0).length, links: document.links.length, errors: [] }; })())"
+            : "window.__mdvReport ? JSON.stringify(window.__mdvReport()) : null";
         string report = "null";
         for (int i = 0; i < 60; i++)
         {
-            report = await _web.CoreWebView2.ExecuteScriptAsync("window.__mdvReport ? JSON.stringify(window.__mdvReport()) : null");
+            report = await _web.CoreWebView2.ExecuteScriptAsync(probe);
             if (report != "null")
             {
                 using var json = JsonDocument.Parse(JsonDocument.Parse(report).RootElement.GetString()!);
@@ -480,10 +563,20 @@ internal sealed class MainForm : Form
             await Task.Delay(250);
         }
         string page = report == "null" ? "{\"error\":\"viewer.js non caricato\"}" : JsonDocument.Parse(report).RootElement.GetString()!;
+
+        // Ctrl+B dispatched inside the page, twice (the tree ends as it was): counts what reached the window,
+        // without sending real keystrokes to whatever window has the focus
+        int togglesBefore = _treeToggles;
+        await _web.CoreWebView2.ExecuteScriptAsync(
+            "for (let i = 0; i < 2; i++) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true }))");
+        for (int i = 0; i < 20 && _treeToggles - togglesBefore < 2; i++) await Task.Delay(50);
+        int ctrlBToggles = _treeToggles - togglesBefore;
+
         await Task.Delay(300); // lascia applicare il tema all'albero prima dello screenshot
         Timing.Mark("page-ready");
         string tree = JsonSerializer.Serialize(new { info = _folderTree.Describe(), timing = Timing.Snapshot() });
-        await File.WriteAllTextAsync(prefix + ".json", $"{{\"page\":{page},\"tree\":{tree},\"dark\":{(_dark ? "true" : "false")}}}");
+        string kindName = kind switch { DocumentKind.Markdown => "markdown", DocumentKind.Html => "html", DocumentKind.Mermaid => "mermaid", DocumentKind.PlantUml => "plantuml", _ => "none" };
+        await File.WriteAllTextAsync(prefix + ".json", $"{{\"kind\":\"{kindName}\",\"ctrlBToggles\":{ctrlBToggles},\"page\":{page},\"tree\":{tree},\"dark\":{(_dark ? "true" : "false")}}}");
         try
         {
             Activate();

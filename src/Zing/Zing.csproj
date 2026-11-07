@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Zing</AssemblyName>
     <Product>Zing</Product>
-    <Version>0.4.0</Version>
+    <Version>0.5.0</Version>
     <ApplicationIcon>zing.ico</ApplicationIcon>
     <SatelliteResourceLanguages>it;en</SatelliteResourceLanguages>
   </PropertyGroup>
@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="assets\**" LogicalName="assets/%(Filename)%(Extension)" />
+    <InternalsVisibleTo Include="Zing.Tests" />
   </ItemGroup>
 
 </Project>
