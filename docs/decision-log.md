@@ -139,5 +139,8 @@ request; with neither (the build before this ADR), the full request.
 **Consequences.** Nothing in a page reaches any host but plantuml.com, and
 that only for diagram images. All Zing windows share one WebView2 browser
 process, so the argument must stay identical across versions that may run
-side by side; a change to it is a new ADR. Web links still open in the
+side by side; a change to it is a new ADR. Upgrading from 0.4 (no
+argument) while a 0.4 window is still open: the new version's WebView2
+probably cannot start until that window is closed (QA-001 F4, not
+reproduced); the release notes say to close Zing before upgrading. Web links still open in the
 default browser on click, outside WebView2.

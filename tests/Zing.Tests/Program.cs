@@ -211,6 +211,16 @@ internal static class Program
         using (var raw = new System.IO.Pipes.NamedPipeClientStream(".", channel, System.IO.Pipes.PipeDirection.InOut, System.IO.Pipes.PipeOptions.CurrentUserOnly))
         {
             raw.Connect(2000);
+
+            // FA-001 R2.6: the pipe grants access to the current Windows user only
+            var me = System.Security.Principal.WindowsIdentity.GetCurrent().User!;
+            var rules = System.IO.Pipes.PipesAclExtensions.GetAccessControl(raw)
+                .GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier))
+                .Cast<System.Security.AccessControl.AccessRule>().ToList();
+            Check("pipe has an access rule", rules.Count > 0);
+            Check("pipe grants only the current user: " + string.Join(",", rules.Select(r => r.IdentityReference.Value)),
+                rules.All(r => r.AccessControlType == System.Security.AccessControl.AccessControlType.Deny || r.IdentityReference.Equals(me)));
+
             byte[] junk = SingleInstance.Encode(null);
             junk[0] = 0xFF; junk[1] = 0xFF; junk[2] = 0xFF; junk[3] = 0x7F; // claims 2 GB
             var reply = new byte[1];
