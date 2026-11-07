@@ -15,6 +15,7 @@ internal static class Program
         ParentFolder();
         HtmlCharset();
         HtmlPolicy();
+        Network();
         DiagramPage();
         WindowTitle();
         HandOffMessages();
@@ -100,6 +101,25 @@ internal static class Program
         // the only host is Zing's own origin: nothing remote, not even plantuml.com
         var hosts = csp.Split(' ', ';').Where(t => t.Contains("://")).Distinct().ToList();
         Check("only Zing's origin in the policy: " + string.Join(",", hosts), hosts.All(h => h == LocalUrl.Origin));
+    }
+
+    // ---------- FA-001 R1.7: below the page, nothing reaches the network but PlantUML images ----------
+
+    private static void Network()
+    {
+        const Microsoft.Web.WebView2.Core.CoreWebView2WebResourceContext Doc = Microsoft.Web.WebView2.Core.CoreWebView2WebResourceContext.Document;
+        const Microsoft.Web.WebView2.Core.CoreWebView2WebResourceContext Img = Microsoft.Web.WebView2.Core.CoreWebView2WebResourceContext.Image;
+        Check("Zing's origin allowed", NetworkPolicy.IsAllowed(LocalUrl.Origin + "/C:/x/a.md", Doc));
+        Check("PlantUML image allowed", NetworkPolicy.IsAllowed("https://www.plantuml.com/plantuml/svg/abc", Img));
+        Check("PlantUML as a document refused", !NetworkPolicy.IsAllowed("https://www.plantuml.com/plantuml/svg/abc", Doc));
+        Check("PlantUML over http refused", !NetworkPolicy.IsAllowed("http://www.plantuml.com/plantuml/svg/abc", Img));
+        Check("look-alike host refused", !NetworkPolicy.IsAllowed("https://www.plantuml.com.evil.example/plantuml/svg/a", Img));
+        Check("userinfo trick refused", !NetworkPolicy.IsAllowed("https://www.plantuml.com@evil.example/plantuml/svg/a", Img));
+        Check("meta refresh target refused", !NetworkPolicy.IsAllowed("http://127.0.0.1:8080/refresh", Doc));
+        Check("remote image refused", !NetworkPolicy.IsAllowed("https://example.com/p.png", Img));
+        Check("look-alike of Zing's origin refused", !NetworkPolicy.IsAllowed(LocalUrl.Origin + ".evil.example/a", Doc));
+        string args = NetworkPolicy.BrowserArguments;
+        Check("resolver blocks every host", args.Contains("--host-resolver-rules=\"MAP * ~NOTFOUND, EXCLUDE www.plantuml.com\""));
     }
 
     // ---------- FA-001 R1.12–R1.15: diagram files ----------

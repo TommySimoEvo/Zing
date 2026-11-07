@@ -59,7 +59,7 @@ On an HTML page only `Ctrl+O`, `Ctrl+B`, `Ctrl+F`, `Ctrl+P`, `Alt+←` and `Ctrl
 Zing treats every Markdown file as **untrusted**, since you may open files you did not write:
 
 - **No scripts from the document**: a Content Security Policy with a per-page nonce blocks any script embedded in the Markdown. Only Zing's own scripts run. An HTML file is served with `script-src 'none'`: no `<script>`, no event-handler attribute and no `javascript:` link runs, and forms, frames and objects are blocked.
-- **No remote content**: remote images (`https://…`) are blocked, so opening a file cannot make requests to servers chosen by its author. Images can be local files, `data:` URIs or PlantUML (on request).
+- **No remote content**: remote images (`https://…`) are blocked, so opening a file cannot make requests to servers chosen by its author. Images can be local files, `data:` URIs or PlantUML (on request). Below the page, Zing's browser engine resolves no host name except `www.plantuml.com`, and Zing answers every other request itself, so not even a frame or a meta refresh opens a connection.
 - **No silent launches**: web links open only on click. Other local files open with their associated app only on click, only for an allow-list of document types (Office, PDF, images, text) and only after a confirmation. Executables and other types are never launched — Zing offers to show them in File Explorer instead.
 - **Contained wikilinks**: absolute paths, drive letters, UNC paths and `..` are rejected.
 - **Network shares**: Zing reads only from the share (`\\server\share`) of the file you opened, not from others. The folder tree stops at the share root.

@@ -59,7 +59,7 @@ internal sealed class FolderTree : Panel
         _upButton.FlatAppearance.BorderSize = 0;
         _upButton.Font = new Font(Font.FontFamily, 11f, FontStyle.Bold); // a thin arrow renders as coloured ClearType fringes
         _upButton.Click += (_, _) => GoUp();
-        _tip.SetToolTip(_upButton, UpCommand + " (Alt+↑)");
+        _tip.SetToolTip(_upButton, UpCommand);
         _header = new Panel { Dock = DockStyle.Top, Height = 30 };
         _header.Controls.Add(_rootLabel);
         _header.Controls.Add(_upButton);

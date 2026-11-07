@@ -171,7 +171,8 @@ internal sealed class MainForm : Form
         string dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Zing", "WebView2");
         try
         {
-            var env = await CoreWebView2Environment.CreateAsync(userDataFolder: dataDir);
+            var options = new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = NetworkPolicy.BrowserArguments };
+            var env = await CoreWebView2Environment.CreateAsync(null, dataDir, options);
             Timing.Mark("webview-env");
             await _web.EnsureCoreWebView2Async(env);
             Timing.Mark("webview-ready");
@@ -189,7 +190,7 @@ internal sealed class MainForm : Form
         core.Settings.AreDevToolsEnabled = Debugger.IsAttached;
         core.Settings.IsPasswordAutosaveEnabled = false;
         core.Settings.IsGeneralAutofillEnabled = false;
-        core.AddWebResourceRequestedFilter(LocalUrl.Origin + "/*", CoreWebView2WebResourceContext.All);
+        core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += OnWebResourceRequested;
         core.NavigationStarting += OnNavigationStarting;
         core.NavigationStarting += (_, e) => { if (!e.Cancel) { _navDelay.Stop(); _navDelay.Start(); } };
@@ -304,6 +305,13 @@ internal sealed class MainForm : Form
     private async void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
     {
         var env = _web.CoreWebView2.Environment;
+        if (!e.Request.Uri.StartsWith(LocalUrl.Origin + "/", StringComparison.OrdinalIgnoreCase))
+        {
+            // anything else a page asks for: answered here, never sent (see NetworkPolicy)
+            if (!NetworkPolicy.IsAllowed(e.Request.Uri, e.ResourceContext))
+                e.Response = env.CreateWebResourceResponse(null, 403, "Forbidden", "");
+            return;
+        }
         var deferral = e.GetDeferral();
         try
         {

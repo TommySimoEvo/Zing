@@ -108,3 +108,36 @@ and every project that references it. Zing never uses WPF.
 
 **Consequences.** Zero-warning builds. If a future WebView2 package stops
 adding that reference, the target simply matches nothing.
+
+## ADR-005 — Network blocked below the page, not only by the CSP
+
+Date: 2026-11-07. Status: accepted.
+
+**Context.** The acceptance checks found that the Content-Security-Policy of
+ADR-002 is not enough for R1.7: an `<iframe>` with a remote address made
+Chromium open a TCP connection to that host (preconnect, before `frame-src`
+applies), and a `<meta refresh>` to a web address sent a full HTTP request
+although `NavigationStarting` cancels it. Either tells a file's author that
+the file was opened. The self-test also hung on such a page.
+
+**Options.**
+1. Answer every non-Zing request in `WebResourceRequested` (filter `*`).
+   Stops the requests, but not a preconnect, which is no request.
+2. Make name resolution fail for every host but the PlantUML server
+   (`--host-resolver-rules`). Stops lookups and connections, IP literals
+   included, but nothing checks what is asked of the allowed host.
+3. A dead proxy. Loopback bypasses proxies by default, and PlantUML would
+   need a bypass list: more moving parts than option 2.
+
+**Decision.** Options 1 and 2 together, in `NetworkPolicy`: Zing's origin is
+served as before, `https://www.plantuml.com/plantuml/…` is let through for
+images only, anything else gets a 403 from Zing; the browser process
+resolves no other host. Verified on the acceptance checks: with both, no
+connection; with the request filter alone, bare TCP connections but no HTTP
+request; with neither (the build before this ADR), the full request.
+
+**Consequences.** Nothing in a page reaches any host but plantuml.com, and
+that only for diagram images. All Zing windows share one WebView2 browser
+process, so the argument must stay identical across versions that may run
+side by side; a change to it is a new ADR. Web links still open in the
+default browser on click, outside WebView2.

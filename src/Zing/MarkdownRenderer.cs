@@ -128,7 +128,7 @@ internal static class MarkdownRenderer
         $"style-src {LocalUrl.Origin} 'unsafe-inline'; " +
         // Immagini solo locali, data:/blob: e il server PlantUML: un .md non può far partire richieste verso
         // server scelti da lui (tracciamento, o CSS che prova l'esistenza di file e il nome utente).
-        $"img-src {LocalUrl.Origin} data: blob: https://www.plantuml.com; " +
+        $"img-src {LocalUrl.Origin} data: blob: https://{NetworkPolicy.PlantUmlHost}; " +
         $"font-src {LocalUrl.Origin} data:; " +
         "connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 }
