@@ -77,7 +77,7 @@ internal static partial class WikiLinks
         string url = LocalUrl.FromPath(resolved) + (anchor.Length > 1 ? "#" + Uri.EscapeDataString(anchor[1..].Trim()) : "");
         string text = label.Replace("[", "\\[").Replace("]", "\\]");
         // ![[nota.md]] (embed di una nota) diventa un link: l'inclusione del contenuto non è supportata
-        return embed && !LocalUrl.IsMarkdown(resolved) ? $"![{text}]({url})" : $"[{text}]({url})";
+        return embed && !LocalUrl.IsDocument(resolved) ? $"![{text}]({url})" : $"[{text}]({url})";
     }
 
     /// <summary>
@@ -104,7 +104,7 @@ internal static partial class WikiLinks
                 string full = Path.Combine(d.FullName, cand);
                 if (File.Exists(full)) return full;
             }
-            if (projectRoot is null && (Directory.Exists(Path.Combine(d.FullName, ".git")) || Directory.Exists(Path.Combine(d.FullName, ".obsidian"))))
+            if (projectRoot is null && IsProjectRoot(d))
             {
                 projectRoot = d;
                 break; // non risale oltre la radice del progetto
@@ -119,9 +119,16 @@ internal static partial class WikiLinks
     public static DirectoryInfo? FindProjectRoot(DirectoryInfo? dir)
     {
         for (var d = dir; d is not null; d = d.Parent)
-            if (Directory.Exists(Path.Combine(d.FullName, ".git")) || Directory.Exists(Path.Combine(d.FullName, ".obsidian")))
+            if (IsProjectRoot(d))
                 return d;
         return null;
+    }
+
+    /// <summary>A folder with .obsidian, or with .git as a folder or as a file (git worktrees and submodules).</summary>
+    private static bool IsProjectRoot(DirectoryInfo d)
+    {
+        string git = Path.Combine(d.FullName, ".git");
+        return Directory.Exists(git) || File.Exists(git) || Directory.Exists(Path.Combine(d.FullName, ".obsidian"));
     }
 
     public static bool IsExcludedDir(string name) => SkipDirs.Contains(name, StringComparer.OrdinalIgnoreCase);

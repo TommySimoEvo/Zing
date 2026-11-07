@@ -96,6 +96,9 @@ figure.plantuml.ask { text-align: left; }
 .plantuml-ask button:hover { border-color: var(--accent); }
 .plantuml-ask label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 figure.plantuml.failed pre { border-color: var(--missing); text-align: left; }
+figure.mermaid-error { margin: 0 0 16px; }
+figure.mermaid-error pre { border: 1px solid var(--missing); }
+.mermaid-error-note { color: var(--missing); font-size: 13px; margin-bottom: 6px; }
 
 @media print {
   #toolbar, #toc { display: none !important; }

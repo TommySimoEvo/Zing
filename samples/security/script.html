@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Script bloccati</title>
+<meta http-equiv="refresh" content="2;url=../security/marker.bat">
+<link rel="stylesheet" href="https://example.com/remote.css">
+<base href="https://example.com/">
+<script>document.title = 'PWNED inline';</script>
+<script src="evil.js"></script>
+</head>
+<body onload="document.title = 'PWNED onload'">
+<h1 id="h">Se Zing è sicuro, il titolo resta "Script bloccati"</h1>
+<img src="x" onerror="document.title = 'PWNED onerror'" alt="">
+<img src="https://example.com/pixel.png" alt="immagine remota">
+<p><a href="javascript:document.title='PWNED link'">link javascript:</a></p>
+<p><a href="marker.bat">link a un eseguibile</a></p>
+<form action="https://example.com/collect" method="post"><input name="q" value="x"><button>invia</button></form>
+<iframe src="https://example.com/"></iframe>
+<object data="https://example.com/x.swf"></object>
+</body>
+</html>

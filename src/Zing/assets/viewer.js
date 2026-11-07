@@ -60,12 +60,32 @@
     });
     content.querySelectorAll('.mermaid').forEach(el => mermaidBlocks.push({ el, src: el.textContent }));
   }
-  function renderMermaid() {
-    if (!mermaidBlocks.length || !window.mermaid) return Promise.resolve();
-    mermaidBlocks.forEach(b => { b.el.removeAttribute('data-processed'); b.el.textContent = b.src; });
+  // A diagram Mermaid cannot parse shows its source and the error, not Mermaid's bare error picture.
+  async function checkMermaid(b) {
+    if (b.invalid !== undefined) return;
+    try { await window.mermaid.parse(b.src); b.invalid = false; }
+    catch (e) {
+      b.invalid = true;
+      const fig = document.createElement('figure');
+      fig.className = 'mermaid-error';
+      const note = document.createElement('div');
+      note.className = 'mermaid-error-note';
+      note.textContent = 'Diagramma Mermaid non valido: ' + String((e && e.message) || e).split('\n')[0];
+      const pre = document.createElement('pre');
+      pre.textContent = b.src;
+      fig.append(note, pre);
+      b.el.replaceWith(fig);
+    }
+  }
+  async function renderMermaid() {
+    if (!mermaidBlocks.length || !window.mermaid) return;
     window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark() ? 'dark' : 'default' });
-    return window.mermaid.run({ nodes: mermaidBlocks.map(b => b.el), suppressErrors: true })
-      .catch(e => errors.push('mermaid: ' + e));
+    for (const b of mermaidBlocks) await checkMermaid(b);
+    const valid = mermaidBlocks.filter(b => !b.invalid);
+    valid.forEach(b => { b.el.removeAttribute('data-processed'); b.el.textContent = b.src; });
+    if (!valid.length) return;
+    try { await window.mermaid.run({ nodes: valid.map(b => b.el), suppressErrors: true }); }
+    catch (e) { errors.push('mermaid: ' + e); }
   }
 
   // ---------- PlantUML (server plantuml.com) ----------
@@ -203,6 +223,7 @@
     tocEntries: toc.querySelectorAll('li').length,
     mermaidBlocks: mermaidBlocks.length,
     mermaidSvg: content.querySelectorAll('.mermaid svg').length,
+    mermaidErrors: content.querySelectorAll('figure.mermaid-error').length,
     plantumlImgs: content.querySelectorAll('figure.plantuml img').length,
     plantumlAsk: content.querySelectorAll('figure.plantuml.ask').length,
     scrolledTo: scrollY,
