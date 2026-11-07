@@ -105,6 +105,13 @@ internal static class Program
             string? path = LocalUrl.ToPath(url);
             Check("refused URL: " + url + " -> " + path, path is null || !LinkPolicy.IsPathAllowed(path, trusted));
         }
+        foreach (string url in new[] { LocalUrl.Origin + "/f/%2E%2E/%2E%2E/x", LocalUrl.Origin + "/f/../x", LocalUrl.Origin + "/f/.." })
+        {
+            string? got = null;
+            bool threw = false;
+            try { got = LocalUrl.ToPath(url); } catch (Exception) { threw = true; }
+            Check("dot segments leaving /f/ give no path: " + url, !threw && got is null);
+        }
         Check("local URL allowed", LocalUrl.ToPath(LocalUrl.Origin + "/f/C:/dev/a.md") is { } local && LinkPolicy.IsPathAllowed(local, null));
 
         Equal("network root of share path", trusted, LinkPolicy.NetworkRoot(@"\\server\share\docs\a.md"));

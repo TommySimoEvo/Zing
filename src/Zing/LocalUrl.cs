@@ -27,6 +27,8 @@ internal static class LocalUrl
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return null;
         if (uri.Scheme == Uri.UriSchemeFile) return uri.LocalPath;
         if (!url.StartsWith(FilePrefix, StringComparison.OrdinalIgnoreCase)) return null;
+        // "/f/../x" is normalised by Uri to "/x": no longer under /f/
+        if (!uri.AbsolutePath.StartsWith("/f/", StringComparison.OrdinalIgnoreCase)) return null;
 
         string rel = uri.AbsolutePath["/f/".Length..];
         string p = Uri.UnescapeDataString(rel);
