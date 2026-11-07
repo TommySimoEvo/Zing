@@ -13,6 +13,7 @@ internal static class Program
     {
         DocumentKinds();
         ParentFolder();
+        PathGuard();
         HtmlCharset();
         HtmlPolicy();
         Network();
@@ -70,6 +71,52 @@ internal static class Program
         Equal("parent of share root with slash", null, FolderTree.ParentOf(@"\\server\share\"));
         Equal("parent inside share", @"\\server\share", FolderTree.ParentOf(@"\\server\share\docs"));
         Equal("parent deep inside share", @"\\server\share\docs", FolderTree.ParentOf(@"\\server\share\docs\a"));
+    }
+
+    // ---------- network-path guard: no SMB to a host a document chose (SEC-v0.5.0 F1) ----------
+
+    private static void PathGuard()
+    {
+        const string trusted = @"\\server\share";
+        foreach (string p in new[] { @"C:\dev\a.md", @"c:\x y\b.png", "D:/docs/c.md", @"C:\..\..\x.md" })
+            Check("allowed local: " + p, LinkPolicy.IsPathAllowed(p, null));
+        Check("allowed inside trusted share", LinkPolicy.IsPathAllowed(@"\\server\share\docs\a.md", trusted));
+        Check("allowed inside trusted share, other case", LinkPolicy.IsPathAllowed(@"\\SERVER\Share\a.md", trusted));
+
+        foreach (string p in new[]
+        {
+            @"\??\UNC\evil\share\x.png", @"\??\GLOBALROOT\Device\Mup\evil\share\x.png", @"\??\C:\x.md",
+            @"\\?\UNC\evil\share\x.png", @"\\?\C:\x.md", @"\\.\pipe\x", @"//?/UNC/evil/s/x", @"\\.\GLOBALROOT\Device\Mup\evil\s\x",
+            @"\\evil\share\x.png", @"//evil/share/x.png", @"\\server\other\x.png", @"\\server\share.evil\x",
+            @"\evil\x.png", @"relative\x.md", "C:x.md", @"C:\a" + "\0" + ".md", "", @"\\",
+        })
+            Check("refused: " + p.Replace("\0", "\\0"), !LinkPolicy.IsPathAllowed(p, trusted));
+
+        // the reviewer's URLs, through the same decoding the resource handler uses
+        foreach (string url in new[]
+        {
+            LocalUrl.Origin + "/f/%2F%3F%3F/UNC/192.0.2.10/s/x.png",
+            LocalUrl.Origin + "/f/%5C%3F%3F%5CUNC%5C192.0.2.10%5Cs%5Cx.png",
+            LocalUrl.Origin + "/f/%2F%3F%3F/GLOBALROOT/Device/Mup/192.0.2.10/s/x.png",
+            LocalUrl.Origin + "/f/UNC/192.0.2.10/s/x.png",
+            "file://192.0.2.10/s/x.png",
+        })
+        {
+            string? path = LocalUrl.ToPath(url);
+            Check("refused URL: " + url + " -> " + path, path is null || !LinkPolicy.IsPathAllowed(path, trusted));
+        }
+        foreach (string url in new[] { LocalUrl.Origin + "/f/%2E%2E/%2E%2E/x", LocalUrl.Origin + "/f/../x", LocalUrl.Origin + "/f/.." })
+        {
+            string? got = null;
+            bool threw = false;
+            try { got = LocalUrl.ToPath(url); } catch (Exception) { threw = true; }
+            Check("dot segments leaving /f/ give no path: " + url, !threw && got is null);
+        }
+        Check("local URL allowed", LocalUrl.ToPath(LocalUrl.Origin + "/f/C:/dev/a.md") is { } local && LinkPolicy.IsPathAllowed(local, null));
+
+        Equal("network root of share path", trusted, LinkPolicy.NetworkRoot(@"\\server\share\docs\a.md"));
+        Equal("no network root for NT path", null, LinkPolicy.NetworkRoot(@"\??\UNC\evil\share\x"));
+        Equal("no network root for device path", null, LinkPolicy.NetworkRoot(@"\\?\UNC\evil\share\x"));
     }
 
     // ---------- FA-001 R1.10: HTML encoding ----------
