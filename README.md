@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/images/zing-icon.png" alt="Zing icon" width="128" height="128"></p>
+
 # Zing
 
 A lightweight, fast Markdown viewer for Windows. Double-click a `.md` file and read it rendered — GitHub-style formatting, Mermaid diagrams, `[[wikilinks]]`, a folder tree and a table of contents — without opening an editor or a browser. It also shows HTML pages and Mermaid and PlantUML diagram files, and keeps to one window: a file opened from Explorer replaces the one on screen.
